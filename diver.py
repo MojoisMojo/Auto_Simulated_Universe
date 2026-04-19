@@ -1164,7 +1164,7 @@ class DivergentUniverse(UniverseUtils):
             return
 
         elif area_now == '位面':
-            log.error('!!!!!!找不到任何东西, 退出重试!!!!!!')
+            log.error('找不到任何东西, 退出重试!!!(不打冒险)')
             pyautogui.click()
             time.sleep(2)
             self.close_and_exit()
