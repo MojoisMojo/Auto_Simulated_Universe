@@ -1157,6 +1157,9 @@ class DivergentUniverse(UniverseUtils):
                     time.sleep(1.5)
                 else:
                     pyautogui.click()
+                    # 部分场景怪身后有罐子, 需要a两次
+                    time.sleep(1)
+                    pyautogui.click()
                 self.area_state += 1
             else:
                 if not ((self.quan or self.bai_e) and self.allow_e):
