@@ -63,7 +63,7 @@ class DivergentUniverse(UniverseUtils):
         self.tactical_reset = False  # 很多候在差分宇宙外的界面识别不到, 不知道为什么, 加一个战术退出标记用于退出后识别不到的时候也能点f
         self.analysis_failed_out_of_game = 0  # 在差分宇宙外面识别屏幕失败的次数, 失败足够多次之后强制点f
         self.state_inited = False  # 识别过事件数量的标记(?)
-        self.area_state = 0  # 识别事件数量的标记(?). 由于存在战术退出, 不在 init_floor 中进行初始化
+        self.event_num = 0  # 识别事件数量的标记. 由于存在战术退出, 不在 init_floor 中进行初始化
         self.max_position_reload = 6
         # 少数区域 (比如4级事件有3个事件, 中间的会先识别导致两边的文字出不来)
         # 或者可能由于某些bug导致没有处理当前区域的内容就进入寻找随意门的逻辑了
@@ -116,7 +116,7 @@ class DivergentUniverse(UniverseUtils):
     def enter_next_room(self):
         self.state_inited = False  # 识别过事件数量的标记
         self.position_reloaded = 0
-        self.area_state = 0
+        self.event_num = 0
         self.retry_event = 1
 
     def route(self):
@@ -871,7 +871,7 @@ class DivergentUniverse(UniverseUtils):
         time.sleep(0.5)
         if self.get_now_area() != area_now or area_now is None:
             return 0
-        if self.area_state == -1:
+        if self.event_num == -1:
             self.close_and_exit(to_exit=False)
             return 1
 
@@ -880,10 +880,10 @@ class DivergentUniverse(UniverseUtils):
             self.position_reloaded = max(1, self.position_reloaded)  # 不战术退出
             self.portal_opening_days('可以直接走的区域')
             return
-        if (self.state_inited and self.position_reloaded < self.max_position_reload and
-                (area_now in event_scene and self.area_state == 0)):
-            self.portal_opening_days('事件房间没事件后')
-            return
+        # if (self.state_inited and self.position_reloaded < self.max_position_reload and
+        #         (area_now in event_scene and not self.state_inited)):
+        #     self.portal_opening_days('事件房间没事件后')
+        #     return
 
         now_floor = self.floor
         for i in range(1, 14):
@@ -897,7 +897,7 @@ class DivergentUniverse(UniverseUtils):
                 time.sleep(3)
         time.sleep(0.8)
 
-        if self.area_state == 0:
+        if not self.state_inited:
             # 判断队伍成员状态
             da_hei_ta_in_team = '大黑塔' in self.team_member
             bai_e_in_team = '白厄' in self.team_member
@@ -969,7 +969,7 @@ class DivergentUniverse(UniverseUtils):
             self.close_and_exit(to_exit=False)
             return 1
 
-        log.info(f"floor:{self.floor}, state:{self.area_state}, area:{area_now}, text:{self.area_text}")
+        log.info(f"floor:{self.floor}, inited:{self.state_inited}, event_num:{self.event_num}, area:{area_now}, text:{self.area_text}")
 
         # 事件类区域
         if area_now in event_scene:
@@ -985,31 +985,33 @@ class DivergentUniverse(UniverseUtils):
             # 如果是单事件,一直前进,然后寻找F
             # 如果是双事件,优先右侧事件,然后再左侧事件
 
-            self.state_inited = True
-            if self.area_state == 0:
-                keyops.keyDown('w')
+            if not self.state_inited:
+                self.state_inited = True
                 total_events = None
 
-                for i in range(5):
+                # 向上挪一下鼠标
+                win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, int(-100 * self.multi * self.scale))
+                # 边走边看有没有字出现
+                # get_text_position()方法, 无论怎么走似乎3事件房间好像最多识别出来两个事件
+                found = 0
+                delay = 0.2
+                for i in range(20):
                     self.get_screen()
                     if self.get_text_position():
                         keyops.keyUp('w')
                         # self.press('s', 0.25)
                         time.sleep(0.5)
                         self.get_screen()
-                        f_message = self.check_f(is_in=['随意门', '事件'])
-                        total_events = self.get_text_position(1)
-                        if f_message == '随意门':
-                            self.portal_opening_days('事件房间走到随意门了', aimed=1)
-                            return
-                        elif f_message == '事件':
-                            # 有时候 total_events 识别到1700去了, 但是事件按钮还是有的
-                            break
+                        total_events = self.get_text_position(clean=1)
+                        # 有时候会锁定到右边的状态效果那个字
                         if len(total_events) and total_events[0][0] < 1600:
-                            # 有时候会锁定到右边的状态效果那个字
-                            break
+                            if i == 0:
+                                break
+                            found += delay
+                            if found > 0.6:
+                                break
                         keyops.keyDown('w')
-                    time.sleep(1)
+                    time.sleep(delay)
 
                 keyops.keyUp('w')
                 if total_events is None:
@@ -1022,36 +1024,13 @@ class DivergentUniverse(UniverseUtils):
                     return 1
                 log.info(f"total_events step: {total_events}")
 
-                if not total_events or not (933 <= total_events[0][0] <= 972):
-                    win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, int(-100 * self.multi * self.scale))
-                    time.sleep(0.3)
-                    self.get_screen()
-                    total_events_after = self.get_text_position(1)
-                    if len(total_events_after) <= 2 and len(total_events_after) >= len(total_events):
-                        total_events = total_events_after
-                    else:
-                        win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, int(100 * self.multi * self.scale))
+                log.info('对齐中...')
+                self.align_event('d', event_text=total_events[-1][0], click=1)
+                self.event_num = len(total_events) - 1
+                log.info(f"对齐完成, event_num: {self.event_num}")
 
-                if total_events is None:
-                    self.press('d', 0.5)
-                    return 1
-
-                if not total_events:
-                    total_events = [(950, 0)]
-
-                portal = self.find_portal()
-                log.info(f"portal_detail: {portal['nums']}")
-                log.info(f"area_state_update: {self.area_state}")
-
-                if portal['nums'] > 0:
-                    self.area_state = 2
-                else:
-                    log.info('对齐中...')
-                    self.align_event('d', event_text=total_events[-1][0], click=1)
-                    self.area_state += 1 + (len(total_events) == 1)
-                    log.info(f"对齐完成, area_state: {self.area_state}")
-
-            elif self.area_state == 1:
+            elif self.event_num > 0:
+                # 处理多事件
                 self.keys.fff = 1
                 self.press('a', 1.3)
                 time.sleep(0.4)
@@ -1066,7 +1045,7 @@ class DivergentUniverse(UniverseUtils):
                     else:
                         self.press('s', 0.5)
                         self.align_event('d')
-                self.area_state += 1
+                self.event_num -= 1
 
             else:
                 self.portal_opening_days('事件房间处理事件完毕')
@@ -1097,13 +1076,13 @@ class DivergentUniverse(UniverseUtils):
         #     return
         #
         # elif area_now == '首领':
-        #     if self.floor == 13 and self.area_state > 0:
+        #     if self.floor == 13 and self.state_inited:
         #         # 已经结束战斗了
         #         self.close_and_exit()
         #         self.end_of_uni()
         #         return 1
 
-        #     if self.area_state == 0:
+        #     if not self.state_inited:
         #         self.press('w', 3)
         #         for c in config.skill_char:
         #             if (c in self.team_member or c.isdigit()) and self.allow_e:
@@ -1119,7 +1098,7 @@ class DivergentUniverse(UniverseUtils):
         #         pyautogui.click()
         #         time.sleep(0.2)
         #         pyautogui.click()
-        #         self.area_state += 1
+        #         self.state_inited = True
         #     else:
         #         time.sleep(1)
         #         self.portal_opening_days(static=1)
@@ -1131,7 +1110,7 @@ class DivergentUniverse(UniverseUtils):
                 self.skill()
                 self.da_hei_ta_effecting = True
 
-            if self.area_state == 0:
+            if not self.state_inited:
                 keyops.keyDown('w')
                 time.sleep(0.2)
                 keyops.keyDown('shift')
@@ -1160,7 +1139,7 @@ class DivergentUniverse(UniverseUtils):
                     # 部分场景怪身后有罐子, 需要a两次
                     time.sleep(1)
                     pyautogui.click()
-                self.area_state += 1
+                self.state_inited = True
             else:
                 if not ((self.quan or self.bai_e) and self.allow_e):
                     self.press('w', 0.25)
