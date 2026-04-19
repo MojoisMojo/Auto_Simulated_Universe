@@ -875,8 +875,8 @@ class DivergentUniverse(UniverseUtils):
             self.close_and_exit(to_exit=False)
             return 1
 
-        event_scene = ['事件', '奖励', '遭遇', '异常', '铸造', '奇遇']
-        if area_now in ['休整', '商店', '空白']:
+        event_scene = ['事件', '奖励', '遭遇', '异常', '铸造']
+        if area_now in ['休整', '商店', '空白', '奇遇']:
             self.position_reloaded = max(1, self.position_reloaded)  # 不战术退出
             self.portal_opening_days('可以直接走的区域')
             return
